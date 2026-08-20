@@ -23,7 +23,13 @@ That means the risk here is silent staleness: the file keeps compiling and
 keeps working, while fixes accumulate upstream that nobody notices. This is
 crypto, so that matters more than it would elsewhere.
 
-**How to check where we are:**
+**This check now runs itself.** `.github/workflows/upstream-drift.yml` does it
+on every push and pull request and once a day on a schedule, which is the beat
+that matters: the change happens in *their* repo, so nothing here can trigger
+it. A commit touching `impl/` fails the job, because those are buckets 1 and 2
+below and have to be carried. Docs and CI commits are reported and pass.
+
+**To check by hand, or to see what the job saw:**
 
 ```
 git clone --depth 100 https://github.com/jedisct1/libhydrogen.git /tmp/libhydrogen
@@ -31,7 +37,9 @@ cd /tmp/libhydrogen && git log --oneline --since=<date the source last changed>
 ```
 
 Use the date of the last commit that touched `hydrogen.c` here, not the last
-commit in this repo — README edits do not move the source.
+commit in this repo — README edits do not move the source. The job derives that
+date the same way, so a red run is telling you the carry is owed, not that
+something here is broken.
 
 **Then triage each upstream commit into one of three buckets:**
 

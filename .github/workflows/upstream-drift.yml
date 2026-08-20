@@ -1,0 +1,68 @@
+name: upstream drift
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Daily. The change this looks for happens in jedisct1/libhydrogen, so no
+    # push here can trigger it, and the failure mode is silent: the file keeps
+    # compiling while fixes accumulate upstream. This is crypto, so that
+    # matters more than it would elsewhere.
+    - cron: "23 21 * * *"
+  workflow_dispatch:
+
+jobs:
+  drift:
+    name: commits upstream since the source last changed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          path: hydrogen
+
+      - uses: actions/checkout@v5
+        with:
+          repository: jedisct1/libhydrogen
+          fetch-depth: 0
+          path: libhydrogen
+
+      # The baseline is the date the FLATTENED SOURCE last changed, never this
+      # repo's last commit: README edits move the repo and not the vendoring.
+      # Triage follows CLAUDE.md's three buckets. Commits touching impl/ are
+      # core or platform RNG and have to be carried, so they fail this job.
+      # Docs, CI and library.properties are skipped, reported, and pass.
+      - name: Compare against upstream
+        working-directory: hydrogen
+        run: |
+          SINCE=$(git log -1 --format=%cI -- hydrogen.c hydrogen.h)
+          echo "flattened source last changed: $SINCE"
+          cd ../libhydrogen
+          echo "upstream HEAD: $(git rev-parse --short HEAD) ($(git log -1 --format=%ad --date=short))"
+          echo
+
+          NEW=$(git log --since="$SINCE" --format=%H)
+          if [ -z "$NEW" ]; then
+            echo "no upstream commits since the source was last carried"
+            exit 0
+          fi
+
+          status=0
+          for c in $NEW; do
+            subject=$(git log -1 --format='%h %ad %s' --date=short "$c")
+            if git show --name-only --format= "$c" | grep -q '^impl/'; then
+              echo "::error::CARRY OWED  $subject"
+              git show --name-only --format= "$c" | sed 's/^/      /'
+              status=1
+            else
+              echo "skip (docs/CI)  $subject"
+            fi
+          done
+
+          echo
+          if [ $status -ne 0 ]; then
+            echo "Read each commit, apply it by hand into the flattened file, and"
+            echo "record it in CLAUDE.md's review log. Upstream commits do not merge."
+          fi
+          exit $status
