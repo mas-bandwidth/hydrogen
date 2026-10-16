@@ -195,7 +195,7 @@ Baseline: one upstream commit since the 2026-08-14 pass.
 Baseline: the flattened source last changed **2026-08-15** (`hydrogen.h`;
 `hydrogen.c` 2026-08-14). Three upstream commits since, one of them touching
 `impl/`. The drift job has been red every day since 2026-09-28, the day this
-commit landed — eighteen consecutive scheduled failures, firing on the right
+commit reached upstream — eighteen consecutive scheduled failures, firing on the right
 day for the right reason.
 
 **Carried — `264bf42` (2026-09-28), comments only.** Every hunk in the code
@@ -224,7 +224,7 @@ character-identical before and after the `//`; `clang -E -P` output is
 at all on the compiled path; and the differential harness `gimli_diff.c`,
 built against both versions, prints **byte-identical** output across hash at
 13 lengths, an 8 KB hash, secretbox, deterministic sign, verify and kdf.
-`clang -c hydrogen.c -Wall -Wextra` is clean. Behavioural risk: nil, and
+`clang -c hydrogen.c -Wall -Wextra` is clean. Behavioral risk: nil, and
 measured rather than asserted.
 
 **Not carried, deliberately:**
@@ -249,7 +249,7 @@ text, not by reading that list.
 
 **proton follows in the same hour.** Parity is byte-identical with a tolerated
 delta of zero, so any edit here reddens `hydrogen-parity.yml` until the mirror
-lands. The flow re-vendor (`flow_hydrogen.cpp`) is the remaining follow-up.
+is copied across. The flow re-vendor (`flow_hydrogen.cpp`) is the remaining follow-up.
 
 ## Who uses this
 
