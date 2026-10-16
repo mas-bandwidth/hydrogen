@@ -190,6 +190,67 @@ Baseline: one upstream commit since the 2026-08-14 pass.
   here (macOS); proton's build is the real test and its re-vendor is the
   follow-up.
 
+### 2026-10-16 — `264bf42` "Fix typos", carried: six comment sites
+
+Baseline: the flattened source last changed **2026-08-15** (`hydrogen.h`;
+`hydrogen.c` 2026-08-14). Three upstream commits since, one of them touching
+`impl/`. The drift job has been red every day since 2026-09-28, the day this
+commit landed — eighteen consecutive scheduled failures, firing on the right
+day for the right reason.
+
+**Carried — `264bf42` (2026-09-28), comments only.** Every hunk in the code
+files changes comment text; no executable line moves. Six sites apply to the
+flattening, two of them in bucket 1 and four in bucket 2:
+
+| upstream file | bucket | platform | change |
+|---|---|---|---|
+| `impl/random.h` | 1 (core) | all | the `hydro_random_uniform` clamping comment reworded — "size mod upper_bound == 0" → "size modulo upper_bound is zero", and the second sentence punctuated |
+| `impl/x25519.h` | 1 (core) | all | ladder comment corrected, `// x3 = BC` → `// x2 = BC`. The comment was wrong and the code was right; this is the one hunk worth carrying on its own merit, since a wrong comment in the ladder is a future reader's trap |
+| `impl/random/stm32.h` | 2 | STM32F4 | "RNG Peripheral enable" → "Enable the RNG peripheral" |
+| `impl/random/ch32.h` | 2 | CH32V30x | the same reword, identical text |
+| `impl/random/esp32.h` | 2 | ESP32/ESP8266 | "activated on ESP board" → "activated on the ESP board" |
+| `impl/random/mbed.h` | 2 | mbed / mbedTLS | the `MBEDTLS_ENTROPY_BLOCK_SIZE` comment reflowed into three sentences, and "Forces mbedTLS" → "Force mbedTLS" |
+
+`// RNG Peripheral enable` is one string appearing twice in the flattened file
+— the STM32F4 arm at line 874 and the CH32 arm at line 989 — because upstream
+changes both files to the same new wording. Both were replaced; that is two
+hunks, not an over-broad substitution.
+
+Verified three ways, because "it's only a comment" is exactly the claim that
+should still be checked: every changed line is comment text, and the single
+changed line that carries code (`hydro_x25519_mul1(x2, z2);`) is
+character-identical before and after the `//`; `clang -E -P` output is
+**identical** between the old and new file, so the preprocessor sees no change
+at all on the compiled path; and the differential harness `gimli_diff.c`,
+built against both versions, prints **byte-identical** output across hash at
+13 lengths, an 8 KB hash, secretbox, deterministic sign, verify and kdf.
+`clang -c hydrogen.c -Wall -Wextra` is clean. Behavioural risk: nil, and
+measured rather than asserted.
+
+**Not carried, deliberately:**
+- The two `cmake/*` hunks of `264bf42` are build-system files. A single-file
+  vendor has no counterpart; standing rule, nothing lost.
+- `f45478a` (2026-09-25) "Fix stale documentation links", `README.md` only —
+  bucket 3, skipped and reported.
+- `9819a7c` (2026-08-26) "Add AI policy", `AI-POLICY.md` only — bucket 3,
+  skipped and reported.
+- `5469506` + `319313d` pico-sdk, still outstanding from the 2026-08-13 pass:
+  a new platform rather than a fix to a carried one.
+
+**The baseline moves itself.** There is no pinned upstream sha anywhere in the
+repo; `upstream-drift.yml` derives its since-date from
+`git log -1 --format=%cI -- hydrogen.c hydrogen.h`, so this commit *is* the new
+baseline and the job goes green on it without a second file to remember.
+
+**Worth knowing for the next pass:** the bucket-2 platform list above does not
+name CH32 or mbed, yet the flattening demonstrably carries both branches and
+both took a hunk here. Triage by grepping the flattened file for the upstream
+text, not by reading that list.
+
+**proton follows in the same hour.** Parity is byte-identical with a tolerated
+delta of zero, so any edit here reddens `hydrogen-parity.yml` until the mirror
+lands. The flow re-vendor (`flow_hydrogen.cpp`) is the remaining follow-up.
+
 ## Who uses this
 
 The flattened file is vendored into the private **flow** networking library as
