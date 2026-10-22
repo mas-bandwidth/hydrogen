@@ -251,6 +251,38 @@ text, not by reading that list.
 delta of zero, so any edit here reddens `hydrogen-parity.yml` until the mirror
 is copied across. The flow re-vendor (`flow_hydrogen.cpp`) is the remaining follow-up.
 
+### 2026-10-22 — strict warnings as errors: a deliberate local delta
+
+Not an upstream carry. Glenn's standing rule for every C/C++ deliverable is zero
+warnings under the strict set (`-Wall -Wextra -Wpedantic -Wshadow -Wconversion
+-Wsign-conversion -Wcast-qual -Wformat=2 -Wundef -Wdouble-promotion`, MSVC `/W4`)
+as errors, and vendored code is not exempt. The flattened file had 14 (gcc) and
+6 (clang) on x86-64, the same sites on the portable Gimli + 32-bit limb arm.
+
+Every fix is an explicit cast or type that spells the conversion the C rules
+already performed, so no value changes: `hydro_bin2hex` (`b`, `c` unsigned; the
+two hex digits widened before the shift), `hydro_hex2bin` (the three `unsigned
+char` truncations), `hydro_equal` / `hydro_compare` (the `uint8_t` narrowings,
+still branch-free), `hydro_x25519_umaal` / `adc` / `adc0` (carry = high limb),
+`hydro_x25519_canon` (`(int)` on the 0 / all-ones result) and the clamp mask in
+the ladder (`(uint8_t) ~7U` is the same 0xF8). 18 lines.
+
+Verified old against new, not by reading: `gimli_diff` byte-identical, and an
+equivalence harness that includes `hydrogen.c` to reach the static x25519 code —
+bin2hex on every byte, hex2bin on every two-character string (with and without
+an ignore set, odd lengths), equal/compare on every byte pair plus 20,000 random
+buffers, 3,000 random x25519 scalarmults in both clamp modes (including the zero
+and all-ones points), 200 deterministic kx/sign keypairs with verify. Identical
+on gcc 15 and clang 21 at -O0/-O2 (SSE2 + 128-bit limbs, and portable Gimli +
+32-bit limbs) and on Apple clang arm64 (aarch64 Gimli). `warnings.yml` now
+holds every one of those arms, plus MSVC `/W4 /WX`, as errors.
+
+**Carrying upstream from here:** these 18 lines differ from upstream. A future
+carry touching them keeps the cast. Offering the same change upstream would end
+the delta; that is an outbound PR to jedisct1/libhydrogen and Glenn's call.
+**proton** takes the identical file in the same change (parity is byte-exact);
+**flow** (`flow_hydrogen.cpp`) re-vendors after.
+
 ## Who uses this
 
 The flattened file is vendored into the private **flow** networking library as
