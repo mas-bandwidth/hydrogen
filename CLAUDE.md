@@ -251,6 +251,63 @@ text, not by reading that list.
 delta of zero, so any edit here reddens `hydrogen-parity.yml` until the mirror
 is copied across. The flow re-vendor (`flow_hydrogen.cpp`) is the remaining follow-up.
 
+### 2026-11-21 — four carried: constant-time optblockers, unpad, hex2bin, WASI → wasm
+
+Baseline: the flattened source last changed **2026-10-16**. Twelve upstream
+commits since, four touching `impl/`. The drift job went red on 2026-11-12, the
+day `72c67c5` reached upstream, and stayed red for the right reason.
+
+**Carried (bucket 1, core):**
+- `72c67c5` (2026-11-12) **hydro_unpad: use an optblocker.** Upstream rewrites
+  the loop so no compiler can turn it into conditional jumps: the accumulator
+  starts from a `volatile size_t` that is always zero, and the barrier logic
+  becomes add/or arithmetic. Also seeds `hydro_x25519_add`'s carry from a new
+  `volatile` zero, `hydro_x25519_optblocker`.
+- `6232c2a` (2026-11-15) **Add optblockers to prevent compiler optimizations.**
+  `hydro_optblocker_u32` (in the `hydrogen_p.h` section, before its first use)
+  is folded into `hydro_mem_ct_cmp_u32` and `hydro_equal`; `hydro_compare`'s
+  accumulators go `volatile`; the x25519 `sub`, `condswap`, `canon` and
+  `sc_montmul` take their constants through `hydro_x25519_optblocker`.
+- `7abb260` (2026-11-17) **hydro_hex2bin(): don't skip NUL bytes when there's
+  an ignore list.** `strchr(ignore, 0)` finds the terminator, so a NUL in the
+  input was silently skipped as if it were in the ignore list. A real
+  behaviour fix: hex2bin now stops at the NUL.
+
+These three applied with `patch -F0`, upstream's own hunks with zero fuzz, so
+every inserted line is upstream's text.
+
+**Carried (bucket 2, platform RNG):**
+- `d1d4e1d` (2026-11-15) **Remove support for WASI.** The `__wasi__` arm
+  (`getentropy`) is replaced by upstream's `impl/random/wasm.h`, under
+  upstream's guard `#elif defined(__wasm__) && !defined(__EMSCRIPTEN__)`: the
+  application provides `arc4random_buf()`. A hand edit, since the flattening
+  inlines the platform file. Affects wasm32 builds only.
+  `clang --target=wasm32-unknown-unknown -ffreestanding -fsyntax-only`
+  against upstream's `builds/wasm32-freestanding/include` is clean.
+
+**Verified, not reviewed.** `clang -c -Wall -Wextra` is clean. `gimli_diff.c`
+built against the old and new file gives byte-identical output. A second
+differential (old against new) drove every function these commits touch: hydro_unpad over all
+29,523 buffers of length 1–9 from {00, 80, 01} at block sizes 1–9 (265,707
+calls); pad/unpad
+round trips; hydro_equal and hydro_compare over all pairs of 2-byte strings from
+{00, 01, 7f, 80, ff}; hex2bin with and without an ignore list; kx keygen and
+deterministic sign/verify at 8 seeds; a kx_n handshake. The only difference
+was the intended one: hex2bin on `"01\0" "02"` with ignore `":"` returned 2
+bytes before and returns 1 now.
+
+**Not carried, deliberately:** the build-system hunks of `d1d4e1d`
+(CMakeLists.txt, build.zig, build.zig.zon, the cmake toolchain) and CI. Also
+`91e5d34`, `6017c71` and `a026f09`, the `builds/wasm32-freestanding` libc
+shims, which are build tree with no counterpart here. `c0ea250` CMake,
+`2e9195c` tis-ci removal, `770bd3b` AI-POLICY nits, and `0f14524` (a test
+only) are bucket 3, skipped and reported. pico-sdk is still outstanding, as
+before.
+
+**proton follows.** Its `hydrogen-parity.yml` goes red on this merge until
+both files are re-vendored verbatim and its build confirms the in-kernel
+compile. Then the flow re-vendor.
+
 ## Who uses this
 
 The flattened file is vendored into the private **flow** networking library as
