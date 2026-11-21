@@ -253,7 +253,7 @@ is copied across. The flow re-vendor (`flow_hydrogen.cpp`) is the remaining foll
 
 ### 2026-11-21 — four carried: constant-time optblockers, unpad, hex2bin, WASI → wasm
 
-Baseline: the flattened source last changed **2026-10-16**. Twelve upstream
+Baseline: the flattened source last changed **2026-10-16**. Eleven upstream
 commits since, four touching `impl/`. The drift job went red on 2026-11-12, the
 day `72c67c5` reached upstream, and stayed red for the right reason.
 
@@ -263,7 +263,8 @@ day `72c67c5` reached upstream, and stayed red for the right reason.
   starts from a `volatile size_t` that is always zero, and the barrier logic
   becomes add/or arithmetic. Also seeds `hydro_x25519_add`'s carry from a new
   `volatile` zero, `hydro_x25519_optblocker`.
-- `6232c2a` (2026-11-15) **Add optblockers to prevent compiler optimizations.**
+- `6232c2a` (2026-11-15) **Add optblockers to present compiler optimizations** (upstream's
+  subject, verbatim; "present" is its typo for "prevent").
   `hydro_optblocker_u32` (in the `hydrogen_p.h` section, before its first use)
   is folded into `hydro_mem_ct_cmp_u32` and `hydro_equal`; `hydro_compare`'s
   accumulators go `volatile`; the x25519 `sub`, `condswap`, `canon` and
@@ -301,7 +302,8 @@ bytes before and returns 1 now.
 `91e5d34`, `6017c71` and `a026f09`, the `builds/wasm32-freestanding` libc
 shims, which are build tree with no counterpart here. `c0ea250` CMake,
 `2e9195c` tis-ci removal, `770bd3b` AI-POLICY nits, and `0f14524` (a test
-only) are bucket 3, skipped and reported. pico-sdk is still outstanding, as
+only) are bucket 3, skipped and reported. So is the `tests/tests.c` hunk of
+`7abb260`: the vendor carries no upstream test suite. pico-sdk is still outstanding, as
 before.
 
 **proton follows.** Its `hydrogen-parity.yml` goes red on this merge until
