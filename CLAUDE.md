@@ -251,6 +251,45 @@ text, not by reading that list.
 delta of zero, so any edit here reddens `hydrogen-parity.yml` until the mirror
 is copied across. The flow re-vendor (`flow_hydrogen.cpp`) is the remaining follow-up.
 
+### 2026-10-22 — strict warnings as errors: a deliberate local delta
+
+Not an upstream carry. Glenn's standing rule for every C/C++ deliverable is zero
+warnings under the strict set (`-Wall -Wextra -Wpedantic -Wshadow -Wconversion
+-Wsign-conversion -Wcast-qual -Wformat=2 -Wundef -Wdouble-promotion`, MSVC `/W4`)
+as errors, and vendored code is not exempt. The flattened file had 14 (gcc) and
+6 (clang) on x86-64, the same sites on the portable Gimli + 32-bit limb arm.
+
+Every fix is an explicit cast or type that spells the conversion the C rules
+already performed, so no value changes: `hydro_bin2hex` (`b`, `c` unsigned; the
+two hex digits widened before the shift), `hydro_hex2bin` (the three `unsigned
+char` truncations), `hydro_equal` / `hydro_compare` (the `uint8_t` narrowings,
+still branch-free), `hydro_x25519_umaal` / `adc` / `adc0` (carry = high limb),
+`hydro_x25519_canon` (`(int)` on the 0 / all-ones result) and the clamp mask in
+the ladder (written `0xF8`, the same value as `~7` as a byte). 18 lines.
+
+For MSVC's C4310 (cast truncates a constant) in the 32-bit limb arm,
+`hydro_x25519_LIMB` masks the low half before its cast and
+`hydro_x25519_MONTGOMERY_FACTOR` masks to the limb width before its cast; same
+values. After the 2026-11-21 carry, `hydro_x25519_canon` and
+`hydro_x25519_sc_montmul` name their optblocker local `optzero`, because
+upstream's `zero` shadows the file-scope `zero[64]` under `-Wshadow`.
+
+Verified old against new, not by reading: `gimli_diff` byte-identical, and an
+equivalence harness that includes `hydrogen.c` to reach the static x25519 code —
+bin2hex on every byte, hex2bin on every two-character string (with and without
+an ignore set, odd lengths), equal/compare on every byte pair plus 20,000 random
+buffers, 3,000 random x25519 scalarmults in both clamp modes (including the zero
+and all-ones points), 200 deterministic kx/sign keypairs with verify. Identical
+on gcc 15 and clang 21 at -O0/-O2 (SSE2 + 128-bit limbs, and portable Gimli +
+32-bit limbs) and on Apple clang arm64 (aarch64 Gimli). `warnings.yml` now
+holds every one of those arms, plus MSVC `/W4 /WX`, as errors.
+
+**Carrying upstream from here:** these 18 lines differ from upstream. A future
+carry touching them keeps the cast. Offering the same change upstream would end
+the delta; that is an outbound PR to jedisct1/libhydrogen and Glenn's call.
+**proton** takes the identical file in the same change (parity is byte-exact);
+**flow** (`flow_hydrogen.cpp`) re-vendors after.
+
 ### 2026-11-21 — four carried: constant-time optblockers, unpad, hex2bin, WASI → wasm
 
 Baseline: the flattened source last changed **2026-10-16**. Eleven upstream

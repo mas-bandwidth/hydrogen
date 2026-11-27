@@ -1223,17 +1223,17 @@ hydro_bin2hex(char *hex, size_t hex_maxlen, const uint8_t *bin, size_t bin_len)
 {
     size_t       i = (size_t) 0U;
     unsigned int x;
-    int          b;
-    int          c;
+    unsigned int b;
+    unsigned int c;
 
     if (bin_len >= SIZE_MAX / 2 || hex_maxlen <= bin_len * 2U) {
         abort();
     }
     while (i < bin_len) {
-        c = bin[i] & 0xf;
-        b = bin[i] >> 4;
-        x = (unsigned char) (87U + c + (((c - 10U) >> 8) & ~38U)) << 8 |
-            (unsigned char) (87U + b + (((b - 10U) >> 8) & ~38U));
+        c = bin[i] & 0xfU;
+        b = (unsigned int) bin[i] >> 4;
+        x = (unsigned int) (unsigned char) (87U + c + (((c - 10U) >> 8) & ~38U)) << 8 |
+            (unsigned int) (unsigned char) (87U + b + (((b - 10U) >> 8) & ~38U));
         hex[i * 2U] = (char) x;
         x >>= 8;
         hex[i * 2U + 1U] = (char) x;
@@ -1261,9 +1261,9 @@ hydro_hex2bin(uint8_t *bin, size_t bin_maxlen, const char *hex, size_t hex_len, 
     while (hex_pos < hex_len) {
         c        = (unsigned char) hex[hex_pos];
         c_num    = c ^ 48U;
-        c_num0   = (c_num - 10U) >> 8;
-        c_alpha  = (c & ~32U) - 55U;
-        c_alpha0 = ((c_alpha - 10U) ^ (c_alpha - 16U)) >> 8;
+        c_num0   = (unsigned char) ((c_num - 10U) >> 8);
+        c_alpha  = (unsigned char) ((c & ~32U) - 55U);
+        c_alpha0 = (unsigned char) (((c_alpha - 10U) ^ (c_alpha - 16U)) >> 8);
         if ((c_num0 | c_alpha0) == 0U) {
             if (ignore != NULL && state == 0U && c != 0U && strchr(ignore, c) != NULL) {
                 hex_pos++;
@@ -1282,7 +1282,7 @@ hydro_hex2bin(uint8_t *bin, size_t bin_maxlen, const char *hex, size_t hex_len, 
         } else {
             bin[bin_pos++] = c_acc | c_val;
         }
-        state = ~state;
+        state = (unsigned char) ~state;
         hex_pos++;
     }
     if (state != 0U) {
@@ -1315,7 +1315,7 @@ hydro_equal(const void *b1_, const void *b2_, size_t len)
     uint32_t       x;
 
     if (b1 == b2) {
-        d = ~d;
+        d = (uint8_t) ~d;
     }
     for (i = 0U; i < len; i++) {
         d |= b1[i] ^ b2[i];
@@ -1340,8 +1340,8 @@ hydro_compare(const uint8_t *b1_, const uint8_t *b2_, size_t len)
         i--;
         x1 = b1[i];
         x2 = b2[i];
-        gt |= (((unsigned int) x2 - (unsigned int) x1) >> 8) & eq;
-        eq &= (((unsigned int) (x2 ^ x1)) - 1U) >> 8;
+        gt |= (uint8_t) ((((unsigned int) x2 - (unsigned int) x1) >> 8) & eq);
+        eq &= (uint8_t) ((((unsigned int) (x2 ^ x1)) - 1U) >> 8);
     }
     return (int) (2U * gt + eq) - 1;
 }
@@ -2095,7 +2095,7 @@ typedef uint32_t hydro_x25519_limb_t;
 typedef uint64_t hydro_x25519_dlimb_t;
 typedef int64_t  hydro_x25519_sdlimb_t;
 #    define hydro_x25519_eswap_limb(X) LOAD32_LE((const uint8_t *) &(X))
-#    define hydro_x25519_LIMB(x)       (uint32_t)(x##ull), (uint32_t) ((x##ull) >> 32)
+#    define hydro_x25519_LIMB(x)       (uint32_t) ((x##ull) & 0xffffffffull), (uint32_t) ((x##ull) >> 32)
 #else
 #    error "Need to know hydro_x25519_WBITS"
 #endif
@@ -2106,7 +2106,7 @@ typedef hydro_x25519_limb_t hydro_x25519_fe[hydro_x25519_NLIMBS];
 typedef hydro_x25519_limb_t hydro_x25519_scalar_t[hydro_x25519_NLIMBS];
 
 static const hydro_x25519_limb_t hydro_x25519_MONTGOMERY_FACTOR =
-    (hydro_x25519_limb_t) 0xd2b51da312547e1bull;
+    (hydro_x25519_limb_t) (0xd2b51da312547e1bull & (0xffffffffffffffffull >> (64 - hydro_x25519_WBITS)));
 
 static const hydro_x25519_scalar_t hydro_x25519_sc_p = { hydro_x25519_LIMB(0x5812631a5cf5d3ed),
                                                          hydro_x25519_LIMB(0x14def9dea2f79cd6),
@@ -2130,7 +2130,7 @@ hydro_x25519_umaal(hydro_x25519_limb_t *carry, hydro_x25519_limb_t acc, hydro_x2
 {
     hydro_x25519_dlimb_t tmp = (hydro_x25519_dlimb_t) mand * mier + acc + *carry;
 
-    *carry = tmp >> hydro_x25519_WBITS;
+    *carry = (hydro_x25519_limb_t) (tmp >> hydro_x25519_WBITS);
     return (hydro_x25519_limb_t) tmp;
 }
 
@@ -2139,7 +2139,7 @@ hydro_x25519_adc(hydro_x25519_limb_t *carry, hydro_x25519_limb_t acc, hydro_x255
 {
     hydro_x25519_dlimb_t total = (hydro_x25519_dlimb_t) *carry + acc + mand;
 
-    *carry = total >> hydro_x25519_WBITS;
+    *carry = (hydro_x25519_limb_t) (total >> hydro_x25519_WBITS);
     return (hydro_x25519_limb_t) total;
 }
 
@@ -2148,7 +2148,7 @@ hydro_x25519_adc0(hydro_x25519_limb_t *carry, hydro_x25519_limb_t acc)
 {
     hydro_x25519_dlimb_t total = (hydro_x25519_dlimb_t) *carry + acc;
 
-    *carry = total >> hydro_x25519_WBITS;
+    *carry = (hydro_x25519_limb_t) (total >> hydro_x25519_WBITS);
     return (hydro_x25519_limb_t) total;
 }
 
@@ -2274,9 +2274,9 @@ hydro_x25519_condswap(hydro_x25519_limb_t a[2 * hydro_x25519_NLIMBS],
 static int
 hydro_x25519_canon(hydro_x25519_fe x)
 {
-    const hydro_x25519_limb_t zero = hydro_x25519_optblocker;
+    const hydro_x25519_limb_t optzero = hydro_x25519_optblocker;
     hydro_x25519_sdlimb_t     carry;
-    hydro_x25519_limb_t       carry0 = 19 ^ zero;
+    hydro_x25519_limb_t       carry0 = 19 ^ optzero;
     hydro_x25519_limb_t       res;
     int                       i;
 
@@ -2284,13 +2284,13 @@ hydro_x25519_canon(hydro_x25519_fe x)
         x[i] = hydro_x25519_adc0(&carry0, x[i]);
     }
     hydro_x25519_propagate(x, carry0);
-    carry = (hydro_x25519_sdlimb_t) zero - 19;
+    carry = (hydro_x25519_sdlimb_t) optzero - 19;
     res   = 0;
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
         res |= x[i] = (hydro_x25519_limb_t) (carry += x[i]);
         carry >>= hydro_x25519_WBITS;
     }
-    return ((hydro_x25519_dlimb_t) res - 1) >> hydro_x25519_WBITS;
+    return (int) (((hydro_x25519_dlimb_t) res - 1) >> hydro_x25519_WBITS);
 }
 
 static void
@@ -2349,7 +2349,7 @@ hydro_x25519_core(hydro_x25519_fe xs[5], const uint8_t scalar[hydro_x25519_BYTES
 
         if (clamp) {
             if (i / 8 == 0) {
-                bytei &= ~7;
+                bytei &= 0xF8;
             } else if (i / 8 == hydro_x25519_BYTES - 1) {
                 bytei &= 0x7F;
                 bytei |= 0x40;
@@ -2425,8 +2425,8 @@ static void
 hydro_x25519_sc_montmul(hydro_x25519_scalar_t out, const hydro_x25519_scalar_t a,
                         const hydro_x25519_scalar_t b)
 {
-    const hydro_x25519_limb_t zero = hydro_x25519_optblocker;
-    hydro_x25519_limb_t       hic  = zero;
+    const hydro_x25519_limb_t optzero = hydro_x25519_optblocker;
+    hydro_x25519_limb_t       hic  = optzero;
     int                       i, j;
 
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
@@ -2451,12 +2451,12 @@ hydro_x25519_sc_montmul(hydro_x25519_scalar_t out, const hydro_x25519_scalar_t a
     }
 
     /* Reduce */
-    hydro_x25519_sdlimb_t scarry = (hydro_x25519_sdlimb_t) zero;
+    hydro_x25519_sdlimb_t scarry = (hydro_x25519_sdlimb_t) optzero;
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
         out[i] = (hydro_x25519_limb_t) (scarry = scarry + out[i] - hydro_x25519_sc_p[i]);
         scarry >>= hydro_x25519_WBITS;
     }
-    hydro_x25519_limb_t need_add = ((hydro_x25519_limb_t) - (scarry + hic)) ^ zero;
+    hydro_x25519_limb_t need_add = ((hydro_x25519_limb_t) - (scarry + hic)) ^ optzero;
 
     hydro_x25519_limb_t carry = 0;
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {

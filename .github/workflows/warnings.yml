@@ -1,0 +1,51 @@
+name: warnings
+
+# ZERO WARNINGS, AS ERRORS. hydrogen.c and the differential harness compile under
+# the strict set on every compiler and every arm the flattening selects on a
+# desktop build: SSE2 + 128-bit limbs (x86-64), aarch64 Gimli (macOS arm64), and
+# the portable Gimli + 32-bit limb arm (x86-64 with __SSE2__ and __SIZEOF_INT128__
+# undefined, which is what a target without them selects). Then the harness runs,
+# so a build that compiles but computes differently is still caught by eye in the
+# log. The __KERNEL__ arm is built by proton, which carries this file byte for byte.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unix:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: gcc,              os: ubuntu-latest, cc: gcc,   arm: "" }
+          - { name: clang,            os: ubuntu-latest, cc: clang, arm: "" }
+          - { name: gcc portable,     os: ubuntu-latest, cc: gcc,   arm: "-U__SSE2__ -U__SIZEOF_INT128__" }
+          - { name: clang portable,   os: ubuntu-latest, cc: clang, arm: "-U__SSE2__ -U__SIZEOF_INT128__" }
+          - { name: macos arm64,      os: macos-latest,  cc: clang, arm: "" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build (strict, as errors) and run
+        run: |
+          for opt in -O0 -O2; do
+            ${{ matrix.cc }} $opt ${{ matrix.arm }} -Werror \
+              -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion \
+              -Wcast-qual -Wformat=2 -Wundef -Wdouble-promotion \
+              gimli_diff.c hydrogen.c -o gimli_diff
+            ./gimli_diff
+          done
+
+  msvc:
+    name: msvc
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build (/W4 /WX) and run
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /O2 gimli_diff.c hydrogen.c /Fe:gimli_diff.exe advapi32.lib || exit /b 1
+          gimli_diff.exe
