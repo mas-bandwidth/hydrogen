@@ -396,6 +396,8 @@ hydro_mem_ct_zero_u32(uint32_t *dst_, size_t n)
     }
 }
 
+static volatile uint32_t hydro_optblocker_u32;
+
 static inline uint32_t hydro_mem_ct_cmp_u32(const uint32_t *b1_, const uint32_t *b2,
                                             size_t n) _hydro_attr_warn_unused_result_;
 
@@ -409,7 +411,7 @@ hydro_mem_ct_cmp_u32(const uint32_t *b1_, const uint32_t *b2, size_t n)
     for (i = 0; i < n; i++) {
         cv |= b1[i] ^ b2[i];
     }
-    return cv;
+    return cv ^ hydro_optblocker_u32;
 }
 
 /* ---------------- */
@@ -671,16 +673,14 @@ static TLS struct {
         return 0;
     }
 
-#elif defined(__wasi__)
+#elif defined(__wasm__) && !defined(__EMSCRIPTEN__)
 
-    #include <unistd.h>
+    /* The application has to provide arc4random_buf(). */
 
     static int
     hydro_random_init(void)
     {
-        if (getentropy(hydro_random_context.state, sizeof hydro_random_context.state) != 0) {
-            return -1;
-        }
+        arc4random_buf(hydro_random_context.state, sizeof hydro_random_context.state);
         hydro_random_context.counter = ~LOAD64_LE(hydro_random_context.state);
         return 0;
     }
@@ -1265,7 +1265,7 @@ hydro_hex2bin(uint8_t *bin, size_t bin_maxlen, const char *hex, size_t hex_len, 
         c_alpha  = (unsigned char) ((c & ~32U) - 55U);
         c_alpha0 = (unsigned char) (((c_alpha - 10U) ^ (c_alpha - 16U)) >> 8);
         if ((c_num0 | c_alpha0) == 0U) {
-            if (ignore != NULL && state == 0U && strchr(ignore, c) != NULL) {
+            if (ignore != NULL && state == 0U && c != 0U && strchr(ignore, c) != NULL) {
                 hex_pos++;
                 continue;
             }
@@ -1312,6 +1312,7 @@ hydro_equal(const void *b1_, const void *b2_, size_t len)
     const uint8_t *b2                   = (const uint8_t *) b2_;
     size_t         i;
     uint8_t        d = (uint8_t) 0U;
+    uint32_t       x;
 
     if (b1 == b2) {
         d = (uint8_t) ~d;
@@ -1319,25 +1320,30 @@ hydro_equal(const void *b1_, const void *b2_, size_t len)
     for (i = 0U; i < len; i++) {
         d |= b1[i] ^ b2[i];
     }
-    return (bool) (1 & ((d - 1) >> 8));
+    x = (uint32_t) d - 1U;
+
+    return (bool) (((x >> 29) ^ hydro_optblocker_u32) >> 2);
 }
 
 int
 hydro_compare(const uint8_t *b1_, const uint8_t *b2_, size_t len)
 {
     const volatile uint8_t *volatile b1 = (const volatile uint8_t *volatile) b1_;
-    const uint8_t *b2                   = (const uint8_t *) b2_;
-    uint8_t        gt                   = 0U;
-    uint8_t        eq                   = 1U;
-    size_t         i;
+    const uint8_t   *b2                 = (const uint8_t *) b2_;
+    volatile uint8_t gt                 = 0U;
+    volatile uint8_t eq                 = 1U;
+    uint16_t         x1, x2;
+    size_t           i;
 
     i = len;
     while (i != 0U) {
         i--;
-        gt |= (uint8_t) (((b2[i] - b1[i]) >> 8) & eq);
-        eq &= (uint8_t) (((b2[i] ^ b1[i]) - 1) >> 8);
+        x1 = b1[i];
+        x2 = b2[i];
+        gt |= (uint8_t) ((((unsigned int) x2 - (unsigned int) x1) >> 8) & eq);
+        eq &= (uint8_t) ((((unsigned int) (x2 ^ x1)) - 1U) >> 8);
     }
-    return (int) (gt + gt + eq) - 1;
+    return (int) (2U * gt + eq) - 1;
 }
 
 int
@@ -1376,33 +1382,35 @@ hydro_pad(unsigned char *buf, size_t unpadded_buflen, size_t blocksize, size_t m
     return (int) (xpadded_len + 1);
 }
 
+static volatile size_t hydro_optblocker_size;
+
 int
 hydro_unpad(const unsigned char *buf, size_t padded_buflen, size_t blocksize)
 {
     const unsigned char *tail;
-    unsigned char        acc = 0U;
-    unsigned char        c;
-    unsigned char        valid   = 0U;
-    volatile size_t      pad_len = 0U;
+    size_t               acc;
+    size_t               valid   = 0U;
+    size_t               pad_len = 0U;
+    size_t               one;
     size_t               i;
-    size_t               is_barrier;
 
     if (padded_buflen < blocksize || blocksize <= 0U) {
         return -1;
     }
+    acc  = hydro_optblocker_size;
+    one  = 1U ^ acc;
     tail = &buf[padded_buflen - 1U];
 
     for (i = 0U; i < blocksize; i++) {
-        c          = *(tail - i);
-        is_barrier = (((acc - 1U) & (pad_len - 1U) & ((c ^ 0x80) - 1U)) >> 8) & 1U;
-        acc |= c;
-        pad_len |= i & (1U + ~is_barrier);
-        valid |= (unsigned char) is_barrier;
+        acc |= *(tail - i);
+        pad_len += ((acc - 1U) >> 8) & one;
+        valid |= (acc ^ 0x80) - 1U;
     }
-    if (valid == 0) {
+    valid = (valid >> 8) & one;
+    if (valid == 0U) {
         return -1;
     }
-    return (int) (padded_buflen - 1 - pad_len);
+    return (int) (padded_buflen - 1U - pad_len);
 }
 
 // ----------------------------------------------------------------------------------------------------------
@@ -2114,6 +2122,8 @@ static const uint8_t hydro_x25519_BASE_POINT[hydro_x25519_BYTES] = { 9 };
 
 static const hydro_x25519_limb_t hydro_x25519_a24[1] = { 121665 };
 
+static volatile hydro_x25519_limb_t hydro_x25519_optblocker;
+
 static inline hydro_x25519_limb_t
 hydro_x25519_umaal(hydro_x25519_limb_t *carry, hydro_x25519_limb_t acc, hydro_x25519_limb_t mand,
                    hydro_x25519_limb_t mier)
@@ -2159,7 +2169,7 @@ hydro_x25519_propagate(hydro_x25519_fe x, hydro_x25519_limb_t over)
 static void
 hydro_x25519_add(hydro_x25519_fe out, const hydro_x25519_fe a, const hydro_x25519_fe b)
 {
-    hydro_x25519_limb_t carry = 0;
+    hydro_x25519_limb_t carry = hydro_x25519_optblocker;
     int                 i;
 
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
@@ -2171,7 +2181,7 @@ hydro_x25519_add(hydro_x25519_fe out, const hydro_x25519_fe a, const hydro_x2551
 static void
 hydro_x25519_sub(hydro_x25519_fe out, const hydro_x25519_fe a, const hydro_x25519_fe b)
 {
-    hydro_x25519_sdlimb_t carry = -76;
+    hydro_x25519_sdlimb_t carry = (hydro_x25519_sdlimb_t) hydro_x25519_optblocker - 76;
     int                   i;
 
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
@@ -2251,10 +2261,11 @@ static void
 hydro_x25519_condswap(hydro_x25519_limb_t a[2 * hydro_x25519_NLIMBS],
                       hydro_x25519_limb_t b[2 * hydro_x25519_NLIMBS], hydro_x25519_limb_t doswap)
 {
-    int i;
+    const hydro_x25519_limb_t mask = doswap ^ hydro_x25519_optblocker;
+    int                       i;
 
     for (i = 0; i < 2 * hydro_x25519_NLIMBS; i++) {
-        hydro_x25519_limb_t xorv = (a[i] ^ b[i]) & doswap;
+        hydro_x25519_limb_t xorv = (a[i] ^ b[i]) & mask;
         a[i] ^= xorv;
         b[i] ^= xorv;
     }
@@ -2263,16 +2274,17 @@ hydro_x25519_condswap(hydro_x25519_limb_t a[2 * hydro_x25519_NLIMBS],
 static int
 hydro_x25519_canon(hydro_x25519_fe x)
 {
-    hydro_x25519_sdlimb_t carry;
-    hydro_x25519_limb_t   carry0 = 19;
-    hydro_x25519_limb_t   res;
-    int                   i;
+    const hydro_x25519_limb_t optzero = hydro_x25519_optblocker;
+    hydro_x25519_sdlimb_t     carry;
+    hydro_x25519_limb_t       carry0 = 19 ^ optzero;
+    hydro_x25519_limb_t       res;
+    int                       i;
 
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
         x[i] = hydro_x25519_adc0(&carry0, x[i]);
     }
     hydro_x25519_propagate(x, carry0);
-    carry = -19;
+    carry = (hydro_x25519_sdlimb_t) optzero - 19;
     res   = 0;
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
         res |= x[i] = (hydro_x25519_limb_t) (carry += x[i]);
@@ -2413,8 +2425,9 @@ static void
 hydro_x25519_sc_montmul(hydro_x25519_scalar_t out, const hydro_x25519_scalar_t a,
                         const hydro_x25519_scalar_t b)
 {
-    hydro_x25519_limb_t hic = 0;
-    int                 i, j;
+    const hydro_x25519_limb_t optzero = hydro_x25519_optblocker;
+    hydro_x25519_limb_t       hic  = optzero;
+    int                       i, j;
 
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
         hydro_x25519_limb_t carry = 0, carry2 = 0, mand = a[i],
@@ -2438,12 +2451,12 @@ hydro_x25519_sc_montmul(hydro_x25519_scalar_t out, const hydro_x25519_scalar_t a
     }
 
     /* Reduce */
-    hydro_x25519_sdlimb_t scarry = 0;
+    hydro_x25519_sdlimb_t scarry = (hydro_x25519_sdlimb_t) optzero;
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
         out[i] = (hydro_x25519_limb_t) (scarry = scarry + out[i] - hydro_x25519_sc_p[i]);
         scarry >>= hydro_x25519_WBITS;
     }
-    hydro_x25519_limb_t need_add = (hydro_x25519_limb_t) - (scarry + hic);
+    hydro_x25519_limb_t need_add = ((hydro_x25519_limb_t) - (scarry + hic)) ^ optzero;
 
     hydro_x25519_limb_t carry = 0;
     for (i = 0; i < hydro_x25519_NLIMBS; i++) {
