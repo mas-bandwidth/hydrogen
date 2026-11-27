@@ -2087,7 +2087,7 @@ typedef uint32_t hydro_x25519_limb_t;
 typedef uint64_t hydro_x25519_dlimb_t;
 typedef int64_t  hydro_x25519_sdlimb_t;
 #    define hydro_x25519_eswap_limb(X) LOAD32_LE((const uint8_t *) &(X))
-#    define hydro_x25519_LIMB(x)       (uint32_t)(x##ull), (uint32_t) ((x##ull) >> 32)
+#    define hydro_x25519_LIMB(x)       (uint32_t) ((x##ull) & 0xffffffffull), (uint32_t) ((x##ull) >> 32)
 #else
 #    error "Need to know hydro_x25519_WBITS"
 #endif
@@ -2098,7 +2098,7 @@ typedef hydro_x25519_limb_t hydro_x25519_fe[hydro_x25519_NLIMBS];
 typedef hydro_x25519_limb_t hydro_x25519_scalar_t[hydro_x25519_NLIMBS];
 
 static const hydro_x25519_limb_t hydro_x25519_MONTGOMERY_FACTOR =
-    (hydro_x25519_limb_t) 0xd2b51da312547e1bull;
+    (hydro_x25519_limb_t) (0xd2b51da312547e1bull & (0xffffffffffffffffull >> (64 - hydro_x25519_WBITS)));
 
 static const hydro_x25519_scalar_t hydro_x25519_sc_p = { hydro_x25519_LIMB(0x5812631a5cf5d3ed),
                                                          hydro_x25519_LIMB(0x14def9dea2f79cd6),
@@ -2337,7 +2337,7 @@ hydro_x25519_core(hydro_x25519_fe xs[5], const uint8_t scalar[hydro_x25519_BYTES
 
         if (clamp) {
             if (i / 8 == 0) {
-                bytei &= (uint8_t) ~7U;
+                bytei &= 0xF8;
             } else if (i / 8 == hydro_x25519_BYTES - 1) {
                 bytei &= 0x7F;
                 bytei |= 0x40;
